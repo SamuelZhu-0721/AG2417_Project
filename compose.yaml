@@ -1,0 +1,20 @@
+services:
+  db:
+    image: pgrouting/pgrouting:16-3.5-3.8
+    environment:
+      POSTGRES_DB: walkability
+      POSTGRES_USER: gis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gis}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - walkability-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gis -d walkability"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  walkability-postgres:

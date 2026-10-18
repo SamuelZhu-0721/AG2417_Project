@@ -1,0 +1,17 @@
+# Install with: pip install -r backend/requirements.txt
+
+osmnx>=1.9           # OSM street network, amenities, transit stops and boundary
+networkx>=3.2        # graph algorithms (also used by osmnx and the tests)
+geopandas>=0.14      # spatial I/O and reprojection
+shapely>=2.0         # geometry operations
+pyproj>=3.6          # coordinate transforms (WGS84 <-> UTM 34N)
+rasterio>=1.3        # reads the local elevation raster (output_hh.tif)
+scipy>=1.11          # osmnx nearest-node lookups
+numpy>=1.26
+pandas>=2.2
+fastapi>=0.110
+pydantic>=2.6
+psycopg[binary,pool]>=3.2,<4   # PostgreSQL driver with connection pooling
+uvicorn[standard]>=0.29        # ASGI server for the API
+python-dotenv>=0.13            # loads backend/.env (DATABASE_URL)
+httpx2                         # required by FastAPI's TestClient in test_database.py

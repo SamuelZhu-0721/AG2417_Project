@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Stockholm County Walkability Comparison - Darragh Nagle & Jiaye Zhu</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #c0c0c0; overflow: hidden; }
+
+  /* Top Desktop Menu & Toolbar */
+  #app-header {
+    height: 65px; background: #d4d0c8; border-bottom: 2px solid #000;
+    display: flex; flex-direction: column; justify-content: space-between; z-index: 10; position: relative;
+  }
+  .menu-bar {
+    height: 24px; background: #d4d0c8; display: flex; align-items: center; gap: 12px; padding-left: 8px;
+    font-size: 11px; font-weight: 700; border-bottom: 1px solid #808080;
+  }
+  .menu-item { cursor: pointer; padding: 2px 6px; }
+  .menu-item:hover { color: #fff; }
+
+  .tool-bar {
+    height: 38px; display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: #d4d0c8;
+  }
+  .tool-btn {
+    height: 28px; padding: 0 8px; background: #e0e0e0; border: 2px solid #000;
+    box-shadow: 2px 2px 0px #000; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 900;
+    cursor: pointer; display: flex; align-items: center; gap: 4px; text-transform: uppercase;
+  }
+  .tool-btn:hover { background: #ffeb3b; }
+  .tool-btn.active { background: #0a246a; color: #fff; box-shadow: inset 2px 2px 0 #000; }
+  .toolbar-divider { width: 2px; height: 22px; background: #808080; margin: 0 4px; }
+
+  /* Workspace Layout */
+  #workspace { display: flex; height: calc(100vh - 89px); width: 100vw; position: relative; }
+
+  /* Docked Left Sidebar (Table of Contents) */
+  #sidebar {
+    width: 380px; background: #ffffff; border-right: 3px solid #000000;
+    display: flex; flex-direction: column; z-index: 5; height: 100%;
+  }
+  .window-title-bar {
+    height: 24px; background: linear-gradient(90deg, #0a246a, #a6caf0); color: #fff;
+    padding: 2px 6px; font-size: 11px; font-weight: 900; display: flex; justify-content: space-between; align-items: center;
+    text-transform: uppercase; border-bottom: 2px solid #000; flex-shrink: 0;
+  }
+  .window-controls span {
+    display: inline-block; width: 14px; height: 14px; background: #d4d0c8; color: #000;
+    border: 1px solid #000; text-align: center; line-height: 12px; font-size: 9px; cursor: pointer; margin-left: 2px;
+  }
+
+  .tab-header { display: flex; background: #d4d0c8; border-bottom: 2px solid #000; flex-shrink: 0; }
+  .tab-btn {
+    flex: 1; padding: 6px; font-size: 10px; font-family: ui-monospace, monospace; font-weight: 900;
+    border: none; border-right: 1px solid #000; background: #d4d0c8; cursor: pointer; text-transform: uppercase;
+  }
+  .tab-btn.active { background: #fff; border-bottom: 2px solid #fff; margin-bottom: -2px; }
+
+  .tab-pane { display: none; flex: 1; padding: 12px; overflow-y: auto; }
+  .tab-pane.active { display: block; }
+
+  /* Map Canvas Container */
+  #map-container { flex: 1; position: relative; background: #808080; }
+  #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
+
+  /* Bottom Status Bar */
+  #status-bar {
+    height: 24px; background: #d4d0c8; border-top: 2px solid #000; display: flex;
+    align-items: center; justify-content: space-between; padding: 0 8px; font-family: ui-monospace, monospace;
+    font-size: 10px; font-weight: 800; z-index: 10;
+  }
+  .status-pane { border: 1px solid #808080; padding: 2px 6px; background: #fff; }
+
+  /* Layer Card styling */
+  .layer-card {
+    background: #f9f9f6; border: 1.5px solid #000; padding: 8px; margin-bottom: 8px; box-shadow: 2px 2px 0 #000;
+  }
+  .layer-card-title {
+    font-size: 11px; font-weight: 900; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center;
+  }
+
+  /* UI Component Overrides inside Docked Panel */
+  .slider-row { margin-bottom: 12px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #000000; margin-bottom: 4px; text-transform: uppercase; }
+  .slider-row input[type=range] { width: 100%; accent-color: #000000; cursor: pointer; height: 6px; background: #000; }
+  
+  .toggle-row { 
+    display: flex; align-items: center; justify-content: space-between; 
+    font-size: 11px; font-weight: 700; color: #000000; 
+    margin-top: 6px; padding-top: 6px; border-top: 1px dashed #808080; 
+    cursor: pointer; text-transform: uppercase;
+  }
+  .toggle-row input[type=checkbox] { width: 16px; height: 16px; accent-color: #000000; cursor: pointer; }
+
+  #weight-total { 
+    font-size: 10px; font-weight: 800; color: #000000; margin-bottom: 8px; 
+    text-transform: uppercase; letter-spacing: 1px; background: #ffeb3b; 
+    padding: 3px 6px; display: inline-block; border: 1.5px solid #000;
+  }
+
+  #compare-list { margin-top: 14px; border-top: 2px solid #000000; padding-top: 10px; }
+  
+  .compare-item {
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 11px; padding: 10px; background: #ffffff; 
+    border: 2px solid #000000; box-shadow: 3px 3px 0px #000000; margin-bottom: 10px;
+  }
+  .compare-item header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
+  .compare-item button { 
+    border: 2px solid #000000; background: #ff5252; width: 22px; height: 22px; 
+    display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; font-weight: 900; font-size: 10px;
+    box-shadow: 2px 2px 0px #000; flex-shrink: 0;
+  }
+  .compare-item button:hover { background: #d32f2f; }
+
+  .point-name-input {
+    font-family: inherit; font-size: 11px; font-weight: 800;
+    border: 1.5px solid #000; background: #fff; padding: 3px 6px;
+    width: 150px; color: #000; box-shadow: 2px 2px 0px #000;
+  }
+  .point-name-input:focus { outline: none; background: #ffeb3b; box-shadow: 3px 3px 0px #000; }
+
+  .export-btn-group { display: flex; gap: 8px; margin-top: 8px; }
+  .export-btn {
+    flex: 1; padding: 6px; background: #4caf50; color: #fff; font-weight: 900; 
+    border: 2px solid #000; box-shadow: 2px 2px 0px #000; cursor: pointer; 
+    text-transform: uppercase; font-family: inherit; font-size: 10px; text-align: center;
+  }
+  .export-btn:hover { background: #388e3c; }
+
+  #clear-all {
+    width: 100%; margin-top: 8px; padding: 6px; background: #ff5252; 
+    color: #fff; font-weight: 900; border: 2px solid #000; 
+    box-shadow: 2px 2px 0px #000; cursor: pointer; text-transform: uppercase;
+    font-family: inherit; font-size: 11px;
+  }
+  #clear-all:hover { background: #d32f2f; }
+
+  .score-bar-bg { background: #e0e0e0; border: 1.5px solid #000000; height: 8px; overflow: hidden; margin-top: 2px; }
+  .score-bar-fg { height: 100%; transition: width 0.3s ease; }
+
+  .badge {
+    display: inline-block; background: #ffeb3b; border: 1.5px solid #000;
+    padding: 2px 6px; font-size: 10px; font-weight: 800; text-transform: uppercase;
+    margin-top: 4px; box-shadow: 2px 2px 0px #000;
+  }
+
+  .matrix-table {
+    width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 6px;
+    border: 1.5px solid #000; background: #fff;
+  }
+  .matrix-table th, .matrix-table td { border: 1px solid #000; padding: 4px; text-align: center; }
+  .matrix-table th { background: #ffeb3b; font-weight: 800; }
+  .winner-badge { background: #00c853; color: #fff; padding: 1px 4px; font-weight: 800; }
+
+  select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%23000000' stroke-width='2' d='M1 1l4 4 4-4'/></svg>") no-repeat right 10px center;
+    background-size: 10px 6px; border: 2px solid #000;
+    padding: 5px 24px 5px 6px; font-family: inherit; font-weight: 700; font-size: 10px;
+    box-shadow: 2px 2px 0px #000; cursor: pointer; width: 100%; color: #000;
+    margin-top: 6px;
+  }
+  select:hover { background-color: #ffeb3b; }
+  select:focus { outline: none; box-shadow: 3px 3px 0px #000; background-color: #fff; }
+
+  .mapboxgl-popup { pointer-events: none; }
+  .status-warn { background: #ffcdd2 !important; }
+
+  #steepness-legend {
+    display: none; margin-top: 8px; border: 1.5px solid #000; background: #f4f4f0;
+    padding: 6px; font-size: 9px; font-weight: 800; text-transform: uppercase;
+  }
+  #steepness-legend .row { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+  #steepness-legend i, .slope-key i {
+    display: inline-block; width: 8px; height: 8px; border: 1px solid #000; margin-right: 3px;
+  }
+
+  .terrain-card { margin-top: 6px; background: #fff; border: 1.5px solid #000; padding: 6px; }
+  .terrain-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .terrain-tag { border: 1.5px solid #000; padding: 1px 6px; box-shadow: 2px 2px 0 #000; font-size: 10px; font-weight: 900; }
+  .terrain-stats { display: flex; gap: 8px; margin-bottom: 6px; }
+  .terrain-stats > div { flex: 1; border: 1.5px solid #000; background: #f4f4f0; padding: 4px 6px; }
+  .terrain-stats b { display: block; font-size: 15px; font-weight: 900; line-height: 1.1; }
+  .terrain-stats span { font-size: 9px; text-transform: uppercase; font-weight: 700; }
+  .slope-bar { display: flex; height: 12px; border: 1.5px solid #000; overflow: hidden; background: #e0e0e0; }
+  .slope-seg { height: 100%; border-right: 1px solid #000; }
+  .slope-seg:last-child { border-right: none; }
+  .slope-key { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; font-size: 9px; font-weight: 700; }
+  .terrain-note { font-size: 10px; color: #555; font-style: italic; }
+
+  .compare-item.loading { opacity: 0.55; transition: opacity 0.15s; }
+  .pt-marker {
+    width: 26px; height: 26px; background: #ffeb3b; border: 2px solid #000; box-shadow: 2px 2px 0 #000;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #000; cursor: pointer;
+  }
+  .elev-hist { position: relative; display: flex; align-items: flex-end; gap: 1px; height: 34px;
+    border: 1.5px solid #000; background: #f4f4f0; padding: 2px; margin-bottom: 2px; }
+  .elev-hist > div { flex: 1; background: #90a4ae; border: 1px solid #000; min-height: 2px; }
+  .elev-origin { position: absolute; top: -4px; bottom: -4px; width: 3px; background: #e53935; border: 1px solid #000; transform: translateX(-50%); }
+  .elev-scale { display: flex; justify-content: space-between; font-size: 9px; font-weight: 800; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<!-- Application Header / Desktop Toolbar -->
+<div id="app-header">
+  <div class="menu-bar">
+    <span class="menu-item">
+      <a href="mailto:darragh@kth.se" style="color: #0a246a; text-decoration: none; font-weight: 800;">Darragh Nagle</a>
+    </span>
+    <span class="menu-item">
+      <a href="mailto:jiaye@kth.se" style="color: #0a246a; text-decoration: none; font-weight: 800;">Jiaye Zhu</a>
+    </span>
+    <span class="menu-item">
+      <a href="https://github.com/DarraghNagle/WebMobile/tree/main" style="color: #0a246a; text-decoration: none; font-weight: 800;">Git Repository</a>
+    </span>
+  </div>
+  <div class="tool-bar">
+    <button class="tool-btn active" id="tool-select"> Point Select</button>
+    <div class="toolbar-divider"></div>
+    <button class="tool-btn" id="btn-draw-box" style="background: #e91e63; color: #fff;"> Draw Box Hazard</button>
+    <button class="tool-btn" id="btn-draw-polygon" style="background: #e91e63; color: #fff;"> Draw Polygon Hazard</button>
+    <button class="tool-btn" id="clear-hazards"> Clear Hazards</button>
+    <div class="toolbar-divider"></div>
+    <button class="tool-btn" id="btn-north"><span id="compass-arrow" style="display: inline-block;">⬆</span> Reset North</button>
+  </div>
+</div>
+
+<!-- Main Workspace -->
+<div id="workspace">
+  <!-- Left Table of Contents Sidebar -->
+  <div id="sidebar">
+    <div class="window-title-bar">
+      <span>Table of Contents / Control Hub</span>
+    </div>
+    
+    <div class="tab-header">
+      <button class="tab-btn active" onclick="switchTab('analysis')">Analysis & Points</button>
+      <button class="tab-btn" onclick="switchTab('layers')">Map Layers</button>
+    </div>
+
+    <!-- Tab 1: Analysis & Parameters -->
+    <div id="tab-analysis" class="tab-pane active">
+      <div id="comparison-matrix"></div>
+
+      <div id="weight-total">Accessibility Priorities</div>
+      <div class="slider-row">
+        <label>Shops / amenities <span id="w-amenity-val">50%</span></label>
+        <input type="range" id="w-amenity" min="0" max="100" value="50" />
+      </div>
+      <div class="slider-row">
+        <label>Public transport <span id="w-transit-val">30%</span></label>
+        <input type="range" id="w-transit" min="0" max="100" value="30" />
+      </div>
+      <div class="slider-row">
+        <label>Green space <span id="w-green-val">20%</span></label>
+        <input type="range" id="w-green" min="0" max="100" value="20" />
+      </div>
+
+      <div id="weight-total" style="margin-top: 12px;">Walking Parameters</div>
+      <div class="slider-row">
+        <label>Trip duration <span id="w-time-val">15 mins</span></label>
+        <input type="range" id="w-time" min="5" max="30" step="5" value="15" />
+      </div>
+      <div class="slider-row">
+        <label>Walking speed <span id="w-speed-val">4.8 km/h</span></label>
+        <input type="range" id="w-speed" min="1.0" max="7.0" step="0.1" value="4.8" />
+      </div>
+
+      <div style="border-top: 2px solid #000; margin-top: 12px; padding-top: 10px;"></div>
+      <label class="toggle-row" style="border:none;">
+        <span>Show reach area overlay</span>
+        <input type="checkbox" id="toggle-reach" checked />
+      </label>
+      
+      <label class="toggle-row">
+        <span>Filter amenities to reach</span>
+        <input type="checkbox" id="toggle-spatial-filter" />
+      </label>
+
+      <label class="toggle-row">
+        <span>Colour streets by steepness</span>
+        <input type="checkbox" id="toggle-steepness-gradient" />
+      </label>
+      <div id="steepness-legend">
+        Street slope
+        <div class="row">
+          <span><i style="background:#2ecc71"></i>0–3%</span>
+          <span><i style="background:#ffeb3b"></i>3–5%</span>
+          <span><i style="background:#ff9800"></i>5–8%</span>
+          <span><i style="background:#e53935"></i>8%+</span>
+        </div>
+      </div>
+
+      <div id="compare-list"></div>
+
+      <div class="export-btn-group" style="margin-top: 12px;">
+        <button class="export-btn" id="btn-json">Export JSON</button>
+        <button class="export-btn" id="btn-csv">Export CSV</button>
+      </div>
+      <button id="clear-all">Clear All Points</button>
+    </div>
+
+    <!-- Tab 2: Map Layers -->
+    <div id="tab-layers" class="tab-pane">
+      <div style="font-size: 11px; font-weight: 800; margin-bottom: 12px; text-transform: uppercase; background: #ffeb3b; padding: 4px; border: 1.5px solid #000;">GIS Overlays & Thematic Layers</div>
+      
+      <!-- Layer Card: Amenities -->
+      <div class="layer-card">
+        <div class="layer-card-title">
+          <span>Shops & Amenities</span>
+          <input type="checkbox" id="layer-amenities" />
+        </div>
+        <select id="filter-amenities" style="display:none;" onchange="filterLayer('amenities-layer', 'amenity', this.value)">
+          <option value="all">All Amenities</option>
+          <option value="cafe">Cafes</option>
+          <option value="restaurant">Restaurants</option>
+          <option value="pharmacy">Pharmacies</option>
+          <option value="school">Schools</option>
+          <option value="shop">Shops</option>
+        </select>
+      </div>
+
+      <!-- Layer Card: Green Space -->
+      <div class="layer-card">
+        <div class="layer-card-title">
+          <span> Green Spaces</span>
+          <input type="checkbox" id="layer-greenspace" />
+        </div>
+        <select id="filter-greenspace" style="display:none;" onchange="filterLayer('greenspace-layer', 'leisure', this.value)">
+          <option value="all">All Green Spaces</option>
+          <option value="park">Parks</option>
+          <option value="garden">Gardens</option>
+          <option value="forest">Forests</option>
+          <option value="grass">Grass Areas</option>
+        </select>
+      </div>
+
+      <!-- Layer Card: Transit -->
+      <div class="layer-card">
+        <div class="layer-card-title">
+          <span> Public Transport</span>
+          <input type="checkbox" id="layer-transit" />
+        </div>
+        <select id="filter-transit" style="display:none;" onchange="filterTransitType(this.value)">
+          <option value="all">All Transit Stops</option>
+          <option value="bus_stop">Bus Stops</option>
+          <option value="station">Railway/Subway Stations</option>
+          <option value="platform">Platforms</option>
+        </select>
+      </div>
+
+      <!-- Layer Card: Reference Points -->
+      <div class="layer-card">
+        <div class="layer-card-title">
+          <span> Reference Points</span>
+          <input type="checkbox" id="layer-reference" />
+        </div>
+      </div>
+
+      <!-- Layer Card: 3D Terrain -->
+      <div class="layer-card">
+        <div class="layer-card-title">
+          <span> 3D Terrain Model</span>
+          <input type="checkbox" id="layer-terrain" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map Viewport -->
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
+</div>
+
+<!-- Bottom Status Bar -->
+<div id="status-bar">
+  <span id="status">Ready. Click anywhere on the map viewport to evaluate walkability.</span>
+  <div style="display: flex; gap: 8px;">
+    <span class="status-pane">EPSG:32634 / WGS84</span>
+    <span class="status-pane" id="cursor-coords">Lat: -- Lon: --</span>
+  </div>
+</div>
+
+<script>
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${tabName}`).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+const MAPBOX_TOKEN = "pk.eyJ1IjoiZGFycmFnaG5hZ2xlIiwiYSI6ImNtdXZkNHpvcDExdm0yeXBsbHF4NHIycWIifQ.nBk983fvP7WzY2F86hgTEA"; 
+const API_BASE = "http://localhost:8000";
+
+mapboxgl.accessToken = MAPBOX_TOKEN;
+
+const map = new mapboxgl.Map({
+  container: "map",
+  style: "mapbox://styles/mapbox/outdoors-v12",
+  center: [18.0686, 59.3293],
+  zoom: 10,
+});
+map.doubleClickZoom.disable();
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
+const MAX_POINTS = 8;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+map.on('rotate', () => {
+  const bearing = map.getBearing();
+  const arrow = document.getElementById('compass-arrow');
+  if (arrow) {
+    arrow.style.transform = `rotate(${-bearing}deg)`;
+  }
+});
+
+document.getElementById("btn-north").addEventListener("click", () => {
+  map.easeTo({ bearing: 0, pitch: 0, duration: 1000 });
+  setStatus("Map re-oriented to North.");
+});
+
+const sliders = {
+  amenity: document.getElementById("w-amenity"),
+  transit: document.getElementById("w-transit"),
+  green: document.getElementById("w-green"),
+  time: document.getElementById("w-time"),
+  speed: document.getElementById("w-speed"),
+};
+const labels = {
+  amenity: document.getElementById("w-amenity-val"),
+  transit: document.getElementById("w-transit-val"),
+  green: document.getElementById("w-green-val"),
+  time: document.getElementById("w-time-val"),
+  speed: document.getElementById("w-speed-val"),
+};
+const toggleReach = document.getElementById("toggle-reach");
+const toggleSpatialFilter = document.getElementById("toggle-spatial-filter");
+const toggleSteepnessGradient = document.getElementById("toggle-steepness-gradient");
+
+let comparePoints = []; 
+let nextId = 1;
+
+// ---- Hazard State ----
+let exclusionPolygons = [];
+let hazardMode = null; // 'box' or 'polygon'
+let hazardBoxStart = null;
+let currentPolygonVertices = [];
+
+document.getElementById("btn-draw-box").addEventListener("click", () => {
+  hazardMode = hazardMode === 'box' ? null : 'box';
+  hazardBoxStart = null;
+  currentPolygonVertices = [];
+  updateHazardButtons();
+  clearDraftLayers();
+  setStatus(hazardMode === 'box' ? "📐 Click two opposite corners for hazard box (ESC to cancel)." : "Hazard drawing cancelled.");
+});
+
+document.getElementById("btn-draw-polygon").addEventListener("click", () => {
+  hazardMode = hazardMode === 'polygon' ? null : 'polygon';
+  hazardBoxStart = null;
+  currentPolygonVertices = [];
+  updateHazardButtons();
+  clearDraftLayers();
+  setStatus(hazardMode === 'polygon' ? "✏️ Click vertices on the map to draw polygon. Double-click or click start point to finish (ESC to cancel)." : "Hazard drawing cancelled.");
+});
+
+document.getElementById("clear-hazards").addEventListener("click", () => {
+  exclusionPolygons = [];
+  hazardMode = null;
+  hazardBoxStart = null;
+  currentPolygonVertices = [];
+  updateHazardButtons();
+  updateHazardLayer();
+  clearDraftLayers();
+  comparePoints.forEach(refreshPoint);
+  setStatus("All hazards cleared.");
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && hazardMode) {
+    hazardMode = null;
+    hazardBoxStart = null;
+    currentPolygonVertices = [];
+    updateHazardButtons();
+    clearDraftLayers();
+    setStatus("Hazard drawing cancelled.");
+  }
+});
+
+function clearDraftLayers() {
+  if (map.getSource("hazard-draft-source")) {
+    map.getSource("hazard-draft-source").setData({ type: "FeatureCollection", features: [] });
+  }
+  if (map.getSource("hazard-vertex-source")) {
+    map.getSource("hazard-vertex-source").setData({ type: "FeatureCollection", features: [] });
+  }
+}
+
+function updateHazardButtons() {
+  document.getElementById("btn-draw-box").style.background = hazardMode === 'box' ? "#0a246a" : "#e0e0e0";
+  document.getElementById("btn-draw-box").style.color = hazardMode === 'box' ? "#fff" : "#000";
+  document.getElementById("btn-draw-polygon").style.background = hazardMode === 'polygon' ? "#0a246a" : "#e91e63";
+  document.getElementById("btn-draw-polygon").style.color = "#fff";
+}
+
+const SLOPE_BANDS = [
+  { max: 0.03,     label: "0–3%", color: "#2ecc71" },
+  { max: 0.05,     label: "3–5%", color: "#ffeb3b" },
+  { max: 0.083,    label: "5–8%", color: "#ff9800" },
+  { max: Infinity, label: "8%+",  color: "#e53935" },
+];
+const STEEPNESS_COLOUR_EXPR = [
+  "step", ["abs", ["to-number", ["get", "grade"], 0]],
+  SLOPE_BANDS[0].color, 0.03, SLOPE_BANDS[1].color, 0.05, SLOPE_BANDS[2].color, 0.083, SLOPE_BANDS[3].color,
+];
+const TERRAIN_TAG_COLOURS = { Flat: "#2ecc71", Gentle: "#d9ef8b", Hilly: "#ff9800", Steep: "#e53935" };
+
+function terrainStats(point) {
+  const feats = point?.data?.edges?.features || [];
+  const bandLen = SLOPE_BANDS.map(() => 0);
+  let total = 0, weighted = 0, anyGrade = false;
+  for (const f of feats) {
+    const p = f.properties || {};
+    const len = Number(p.length) || 0;
+    const g = Math.abs(Number(p.grade) || 0);
+    if (len <= 0) continue;
+    if (g > 0) anyGrade = true;
+    total += len;
+    weighted += g * len;
+    bandLen[SLOPE_BANDS.findIndex((b) => g < b.max)] += len;
+  }
+  if (total === 0) return null;
+  const meanPct = (weighted / total) * 100;
+  const shares = bandLen.map((l) => (l / total) * 100);
+  const steepPct = shares[2] + shares[3];
+  const tag = meanPct < 1.5 ? "Flat" : meanPct < 3 ? "Gentle" : meanPct < 5 ? "Hilly" : "Steep";
+  return { meanPct, steepPct, shares, tag, anyGrade };
+}
+
+function elevationHTML(p) {
+  const e = p?.data?.elevation_profile;
+  if (!e || !e.available) return "";
+  const share = e.histogram.share, peak = Math.max(...share) || 1;
+  const bars = share.map((s) => `<div style="height:${Math.max(4, (s / peak) * 100)}%" title="${(s * 100).toFixed(0)}% of reachable nodes"></div>`).join("");
+  const marker = e.origin == null || e.relief <= 0 ? "" : `<span class="elev-origin" style="left:${((e.origin - e.min) / e.relief) * 100}%" title="Start: ${e.origin.toFixed(0)} m"></span>`;
+  return `<div class="terrain-stats">
+      <div><b>${e.relief.toFixed(0)} m</b><span>Relief in reach</span></div>
+      <div><b>${e.mean.toFixed(0)} m</b><span>Mean elevation</span></div>
+    </div>
+    <div class="elev-hist">${bars}${marker}</div>
+    <div class="elev-scale"><span>${e.min.toFixed(0)} m</span><span>${e.origin == null ? "" : "▲ start " + e.origin.toFixed(0) + " m"}</span><span>${e.max.toFixed(0)} m</span></div>`;
+}
+
+function terrainHTML(p) {
+  const t = terrainStats(p);
+  if (!t) return "";
+  if (!t.anyGrade) {
+    return `<div class="terrain-card"><div class="terrain-head"><span>Terrain</span></div>
+      <div class="terrain-note">No slope data in this dataset. Re-run data_prep.py.</div></div>`;
+  }
+  const segs = SLOPE_BANDS.map((b, i) => t.shares[i] > 0
+    ? `<div class="slope-seg" style="width:${t.shares[i]}%;background:${b.color}" title="${b.label}: ${t.shares[i].toFixed(0)}% of street length"></div>` : ""
+  ).join("");
+  const key = SLOPE_BANDS.map((b, i) => `<span><i style="background:${b.color}"></i>${b.label} · ${t.shares[i].toFixed(0)}%</span>`).join("");
+  return `
+    <div class="terrain-card">
+      <div class="terrain-head">
+        <span>Terrain</span>
+        <span class="terrain-tag" style="background:${TERRAIN_TAG_COLOURS[t.tag]}">${t.tag}</span>
+      </div>
+      ${elevationHTML(p)}
+      <div class="terrain-stats">
+        <div><b>${t.meanPct.toFixed(1)}%</b><span>Avg street slope</span></div>
+        <div><b>${t.steepPct.toFixed(0)}%</b><span>Streets over 5%</span></div>
+      </div>
+      <div class="slope-bar">${segs}</div>
+      <div class="slope-key">${key}</div>
+    </div>`;
+}
+
+let loadedLayersCache = {
+  amenities: null,
+  greenspace: null,
+  transit: null
+};
+
+function getNormalizedWeights() {
+  const raw = {
+    amenity: Number(sliders.amenity.value),
+    transit: Number(sliders.transit.value),
+    green: Number(sliders.green.value),
+  };
+  const total = raw.amenity + raw.transit + raw.green || 1;
+  return {
+    amenity: raw.amenity / total,
+    transit: raw.transit / total,
+    green: raw.green / total,
+  };
+}
+
+function updateLabels() {
+  const w = getNormalizedWeights();
+  labels.amenity.textContent = Math.round(w.amenity * 100) + "%";
+  labels.transit.textContent = Math.round(w.transit * 100) + "%";
+  labels.green.textContent = Math.round(w.green * 100) + "%";
+  labels.time.textContent = sliders.time.value + " mins";
+  labels.speed.textContent = Number(sliders.speed.value).toFixed(1) + " km/h";
+}
+
+let refreshTimer = null;
+Object.values(sliders).forEach((s) => {
+  s.addEventListener("input", () => {
+    updateLabels();
+    comparePoints.forEach((p) => { p.weights = getNormalizedWeights(); });
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => comparePoints.forEach(refreshPoint), 300);
+  });
+});
+
+async function refreshPoint(point) {
+  point.abort?.abort();
+  point.abort = new AbortController();
+  const seq = (point.seq = (point.seq || 0) + 1);
+  point.loading = true;
+  point.error = null;
+  setStatus(`Scoring ${point.name}...`);
+  renderCompareList();
+  try {
+    const res = await fetch(`${API_BASE}/score`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: point.abort.signal,
+      body: JSON.stringify({
+        lat: point.lat,
+        lon: point.lon,
+        weights: point.weights,
+        trip_minutes: Number(sliders.time.value),
+        walking_speed_kmh: Number(sliders.speed.value),
+        exclusion_polygons: exclusionPolygons,
+      }),
+    });
+    if (!res.ok) {
+      const detail = (await res.json().catch(() => ({}))).detail;
+      const err = new Error(typeof detail === "string" ? detail : `API error: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    const data = await res.json();
+    if (seq !== point.seq) return;
+    point.data = data;
+    point.loading = false;
+    updateUnifiedIsochrones();
+    updateNetworkEdges(point);
+    updateComparisonMatrix();
+    applySpatialFilter();
+    setStatus(`${point.name} evaluated successfully.`);
+  } catch (err) {
+    if (err.name === "AbortError" || seq !== point.seq) return;
+    point.loading = false;
+    if (err.status === 400 && !point.data) { removePoint(point.id); setStatus(err.message); return; }
+    point.error = err.message;
+    setStatus(`Error scoring ${point.name}: ${err.message}`);
+  }
+  renderCompareList();
+}
+
+function edgePaint(useSteepness) {
+  return useSteepness
+    ? { "line-color": STEEPNESS_COLOUR_EXPR, "line-width": 3, "line-opacity": 0.95 }
+    : { "line-color": "#000000", "line-width": 1.5, "line-opacity": 0.7 };
+}
+
+const edgePopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
+function bindEdgePopup(layerId) {
+  map.on("mousemove", layerId, (e) => {
+    if (!toggleSteepnessGradient.checked) { edgePopup.remove(); return; }
+    const f = e.features && e.features[0];
+    if (!f) return;
+    const slope = Math.abs(Number(f.properties.grade) || 0) * 100;
+    const len = Math.round(Number(f.properties.length) || 0);
+    edgePopup.setLngLat(e.lngLat)
+      .setHTML(`<div style="font-size:11px;font-weight:800;">Slope ${slope.toFixed(1)}%</div><div style="font-size:10px;">${len} m segment</div>`)
+      .addTo(map);
+  });
+  map.on("mouseleave", layerId, () => edgePopup.remove());
+}
+
+function updateNetworkEdges(point) {
+  const edgeSourceId = `edge-source-${point.id}`;
+  const edgeLayerId = `edge-layer-${point.id}`;
+  const visibility = toggleReach.checked ? 'visible' : 'none';
+
+  if (point.data.edges) {
+    if (map.getSource(edgeSourceId)) {
+      map.getSource(edgeSourceId).setData(point.data.edges);
+    } else {
+      map.addSource(edgeSourceId, { type: 'geojson', data: point.data.edges });
+      map.addLayer({
+        id: edgeLayerId,
+        type: 'line',
+        source: edgeSourceId,
+        layout: { visibility: visibility },
+        paint: edgePaint(toggleSteepnessGradient.checked)
+      });
+      bindEdgePopup(edgeLayerId);
+    }
+  }
+}
+
+function refreshAllEdgeStyles() {
+  const paint = edgePaint(toggleSteepnessGradient.checked);
+  comparePoints.forEach((p) => {
+    const id = `edge-layer-${p.id}`;
+    if (map.getLayer(id)) {
+      Object.entries(paint).forEach(([k, v]) => map.setPaintProperty(id, k, v));
+    }
+  });
+  document.getElementById("steepness-legend").style.display = toggleSteepnessGradient.checked ? "block" : "none";
+}
+
+toggleSteepnessGradient.addEventListener("change", refreshAllEdgeStyles);
+
+function removePoint(id) {
+  const idx = comparePoints.findIndex((p) => p.id === id);
+  if (idx === -1) return;
+  
+  if (map.getLayer(`edge-layer-${id}`)) map.removeLayer(`edge-layer-${id}`);
+  if (map.getSource(`edge-source-${id}`)) map.removeSource(`edge-source-${id}`);
+
+  comparePoints[idx].marker.remove();
+  comparePoints.splice(idx, 1);
+  renumberMarkers();
+  
+  updateUnifiedIsochrones();
+  renderCompareList();
+  updateComparisonMatrix();
+  applySpatialFilter();
+  setStatus("Point removed.");
+}
+
+document.getElementById("clear-all").addEventListener("click", () => {
+  comparePoints.forEach(p => {
+    if (map.getLayer(`edge-layer-${p.id}`)) map.removeLayer(`edge-layer-${p.id}`);
+    if (map.getSource(`edge-source-${p.id}`)) map.removeSource(`edge-source-${p.id}`);
+    p.marker.remove();
+  });
+  comparePoints = [];
+  
+  updateUnifiedIsochrones();
+  renderCompareList();
+  updateComparisonMatrix();
+  applySpatialFilter();
+  setStatus("All points cleared.");
+});
+
+toggleReach.addEventListener("change", () => {
+  const visibility = toggleReach.checked ? 'visible' : 'none';
+  if (map.getLayer('isochrones-layer')) {
+    map.setLayoutProperty('isochrones-layer', 'visibility', visibility);
+    map.setLayoutProperty('isochrones-outline', 'visibility', visibility);
+  }
+  comparePoints.forEach((p) => {
+    if (map.getLayer(`edge-layer-${p.id}`)) {
+      map.setLayoutProperty(`edge-layer-${p.id}`, 'visibility', visibility);
+    }
+  });
+});
+
+toggleSpatialFilter.addEventListener("change", () => {
+  applySpatialFilter();
+});
+
+function applySpatialFilter() {
+  const isFiltering = toggleSpatialFilter.checked;
+
+  if (map.getSource('amenities-layer') && loadedLayersCache.amenities) {
+    if (!isFiltering || comparePoints.length === 0) {
+      map.getSource('amenities-layer').setData(loadedLayersCache.amenities);
+    } else {
+      let unionPoly = getUnifiedPolygon();
+      if (unionPoly) {
+        const filtered = loadedLayersCache.amenities.features.filter(f => {
+          try { return turf.booleanPointInPolygon(f, unionPoly); } catch(e) { return false; }
+        });
+        map.getSource('amenities-layer').setData({ type: 'FeatureCollection', features: filtered });
+      }
+    }
+  }
+
+  if (map.getSource('greenspace-layer') && loadedLayersCache.greenspace) {
+    if (!isFiltering || comparePoints.length === 0) {
+      map.getSource('greenspace-layer').setData(loadedLayersCache.greenspace);
+    } else {
+      let unionPoly = getUnifiedPolygon();
+      if (unionPoly) {
+        const filtered = loadedLayersCache.greenspace.features.filter(f => {
+          try {
+            const centroid = turf.centroid(f);
+            return turf.booleanPointInPolygon(centroid, unionPoly);
+          } catch(e) { return false; }
+        });
+        map.getSource('greenspace-layer').setData({ type: 'FeatureCollection', features: filtered });
+      }
+    }
+  }
+
+  if (map.getSource('transit-layer') && loadedLayersCache.transit) {
+    if (!isFiltering || comparePoints.length === 0) {
+      map.getSource('transit-layer').setData(loadedLayersCache.transit);
+    } else {
+      let unionPoly = getUnifiedPolygon();
+      if (unionPoly) {
+        const filtered = loadedLayersCache.transit.features.filter(f => {
+          try { return turf.booleanPointInPolygon(f, unionPoly); } catch(e) { return false; }
+        });
+        map.getSource('transit-layer').setData({ type: 'FeatureCollection', features: filtered });
+      }
+    }
+  }
+}
+
+function getUnifiedPolygon() {
+  let unionPoly = null;
+  comparePoints.forEach(p => {
+    if (p.data && p.data.isochrone) {
+      if (!unionPoly) {
+        unionPoly = p.data.isochrone;
+      } else {
+        try {
+          unionPoly = turf.union(unionPoly, p.data.isochrone);
+        } catch (e) {
+          console.error("Turf union error:", e);
+        }
+      }
+    }
+  });
+  return unionPoly;
+}
+
+function updateComparisonMatrix() {
+  let matrixContainer = document.getElementById("comparison-matrix");
+  if (!matrixContainer) return;
+
+  if (comparePoints.length < 2 || !comparePoints[0].data) {
+    matrixContainer.innerHTML = "";
+    return;
+  }
+
+  const metricsList = [
+    { label: "Final Score", getVal: (p) => p.data.final_score },
+    { label: "Accessibility", getVal: (p) => p.data.accessibility_score },
+    { label: "Morphology", getVal: (p) => p.data.morphology_score },
+    { label: "Amenities Count", getVal: (p) => p.data.factors.accessibility.amenity_count },
+    { label: "Transit Score", getVal: (p) => p.data.factors.accessibility.transit_stop_score },
+    { label: "Green Ratio (%)", getVal: (p) => p.data.factors.accessibility.green_space_ratio * 100 },
+    { label: "Avg Slope (%)", lowerBetter: true, getVal: (p) => terrainStats(p)?.meanPct ?? 0 },
+    { label: "Streets >5% (%)", lowerBetter: true, getVal: (p) => terrainStats(p)?.steepPct ?? 0 }
+  ];
+
+  let html = `<table class="matrix-table"><tr><th>Metric</th>`;
+  comparePoints.forEach((p, idx) => {
+    html += `<th>P${idx + 1}</th>`;
+  });
+  html += `<th>Leader</th></tr>`;
+
+  metricsList.forEach((m) => {
+    html += `<tr><td><strong>${m.label}</strong></td>`;
+    let bestVal = m.lowerBetter ? Infinity : -Infinity;
+    let bestIdx = -1;
+
+    comparePoints.forEach((p, idx) => {
+      const val = m.getVal(p) || 0;
+      if (m.lowerBetter ? val < bestVal : val > bestVal) {
+        bestVal = val;
+        bestIdx = idx;
+      }
+      html += `<td>${typeof val === 'number' ? val.toFixed(1) : val}</td>`;
+    });
+
+    html += `<td><span class="winner-badge">P${bestIdx + 1}</span></td></tr>`;
+  });
+
+  html += `</table>`;
+  matrixContainer.innerHTML = html;
+}
+
+function exportToJSON() {
+  const exportData = comparePoints.map(p => ({
+    name: p.name,
+    lat: p.lat,
+    lon: p.lon,
+    weights: p.weights,
+    score: p.data?.final_score,
+    factors: p.data?.factors,
+    terrain: (() => { const s = terrainStats(p); return s ? { avg_slope_pct: +s.meanPct.toFixed(2), streets_over_5pct: +s.steepPct.toFixed(1), band_shares_pct: s.shares.map((v) => +v.toFixed(1)) } : null; })()
+  }));
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+  const downloadAnchor = document.createElement("a");
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", "county_walkability_analysis.json");
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+}
+
+function exportToCSV() {
+  if (comparePoints.length === 0) return;
+
+  let csvContent = "data:text/csv;charset=utf-8,PointName,Latitude,Longitude,FinalScore,AccessibilityScore,MorphologyScore,AvgSlopePct,SteepStreetsPct\n";
+  comparePoints.forEach((p) => {
+    const ts = terrainStats(p);
+    csvContent += `${p.name},${p.lat},${p.lon},${p.data?.final_score || 0},${p.data?.accessibility_score || 0},${p.data?.morphology_score || 0},${ts ? ts.meanPct.toFixed(2) : ""},${ts ? ts.steepPct.toFixed(1) : ""}\n`;
+  });
+
+  const encodedUri = encodeURI(csvContent);
+  const downloadAnchor = document.createElement("a");
+  downloadAnchor.setAttribute("href", encodedUri);
+  downloadAnchor.setAttribute("download", "county_walkability_analysis.csv");
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+}
+
+document.getElementById("btn-json")?.addEventListener("click", exportToJSON);
+document.getElementById("btn-csv")?.addEventListener("click", exportToCSV);
+
+updateLabels();
+
+function getScoreColour(zScore) {
+  if (zScore >= 1.0) return "#1a9850";   
+  if (zScore >= 0.2) return "#d9ef8b";   
+  if (zScore >= -0.2) return "#fee08b";  
+  if (zScore >= -1.0) return "#fc8d59";  
+  return "#d73027";                      
+}
+
+function renumberMarkers() {
+  comparePoints.forEach((p, i) => { p.marker.getElement().textContent = i + 1; });
+}
+
+map.on("click", async (e) => {
+  const { lat, lng } = e.lngLat;
+  if (!isInsideStudyArea(lng, lat)) { warnOutside(); return; }
+
+  // Handle Hazard Drawing Box
+  if (hazardMode === 'box') {
+    if (!hazardBoxStart) {
+      hazardBoxStart = [lng, lat];
+      setStatus("📍 First corner set. Now click the opposite corner to complete the box.");
+    } else {
+      const bbox = turf.bbox({
+        type: "FeatureCollection",
+        features: [turf.point(hazardBoxStart), turf.point([lng, lat])]
+      });
+      const boxPolygon = turf.bboxPolygon(bbox);
+      exclusionPolygons.push(boxPolygon.geometry);
+      hazardMode = null;
+      hazardBoxStart = null;
+      updateHazardButtons();
+      updateHazardLayer();
+      clearDraftLayers();
+      comparePoints.forEach(refreshPoint);
+      setStatus("Hazard box added successfully. Recalculating routes...");
+    }
+    return;
+  }
+
+  // Handle Hazard Drawing Custom Polygon
+  if (hazardMode === 'polygon') {
+    currentPolygonVertices.push([lng, lat]);
+    if (currentPolygonVertices.length >= 3) {
+      const first = currentPolygonVertices[0];
+      const dist = turf.distance(turf.point(first), turf.point([lng, lat]), {units: 'meters'});
+      if (dist < 150) {
+        currentPolygonVertices.pop();
+        const poly = turf.polygon([ [...currentPolygonVertices, currentPolygonVertices[0]] ]);
+        exclusionPolygons.push(poly.geometry);
+        hazardMode = null;
+        currentPolygonVertices = [];
+        updateHazardButtons();
+        updateHazardLayer();
+        clearDraftLayers();
+        comparePoints.forEach(refreshPoint);
+        setStatus("Custom hazard polygon finished. Recalculating routes...");
+        return;
+      }
+    }
+    setStatus(`✏️ Vertex ${currentPolygonVertices.length} added. Click more points, or click near your start point / double-click to close.`);
+    updateDraftPolygonLayer();
+    return;
+  }
+
+  // Normal point evaluation click
+  if (comparePoints.length >= MAX_POINTS) { setStatus(`Maximum of ${MAX_POINTS} points. Remove one to add another.`); return; }
+  const id = nextId++;
+  const el = document.createElement("div");
+  el.className = "pt-marker";
+  el.textContent = comparePoints.length + 1;
+  const marker = new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+  const point = { id, name: `Point ${comparePoints.length + 1}`, lat, lon: lng, marker, weights: getNormalizedWeights(), data: null };
+  comparePoints.push(point);
+  await refreshPoint(point);
+});
+
+map.on("dblclick", (e) => {
+  if (hazardMode === 'polygon' && currentPolygonVertices.length >= 3) {
+    e.preventDefault();
+    const poly = turf.polygon([ [...currentPolygonVertices, currentPolygonVertices[0]] ]);
+    exclusionPolygons.push(poly.geometry);
+    hazardMode = null;
+    currentPolygonVertices = [];
+    updateHazardButtons();
+    updateHazardLayer();
+    clearDraftLayers();
+    comparePoints.forEach(refreshPoint);
+    setStatus("Custom hazard polygon completed. Recalculating routes...");
+  }
+});
+
+function updateHazardLayer() {
+  const fc = { type: "FeatureCollection", features: exclusionPolygons.map(geom => ({ type: "Feature", geometry: geom, properties: {} })) };
+  if (!map.getSource("hazards-source")) {
+    map.addSource("hazards-source", { type: "geojson", data: fc });
+    map.addLayer({
+      id: "hazards-layer",
+      type: "fill",
+      source: "hazards-source",
+      paint: { "fill-color": "#ff5252", "fill-opacity": 0.4, "fill-outline-color": "#000000" }
+    });
+  } else {
+    map.getSource("hazards-source").setData(fc);
+  }
+}
+
+function updateDraftPolygonLayer() {
+  const lineFc = {
+    type: "FeatureCollection",
+    features: currentPolygonVertices.length > 1 ? [{
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: currentPolygonVertices }
+    }] : []
+  };
+
+  const vertexFc = {
+    type: "FeatureCollection",
+    features: currentPolygonVertices.map((coord, idx) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: coord },
+      properties: { vertex: idx + 1 }
+    }))
+  };
+
+  if (!map.getSource("hazard-draft-source")) {
+    map.addSource("hazard-draft-source", { type: "geojson", data: lineFc });
+    map.addLayer({
+      id: "hazard-draft-layer",
+      type: "line",
+      source: "hazard-draft-source",
+      paint: { "line-color": "#e91e63", "line-width": 3, "line-dasharray": [2, 2] }
+    });
+  } else {
+    map.getSource("hazard-draft-source").setData(lineFc);
+  }
+
+  if (!map.getSource("hazard-vertex-source")) {
+    map.addSource("hazard-vertex-source", { type: "geojson", data: vertexFc });
+    map.addLayer({
+      id: "hazard-vertex-layer",
+      type: "circle",
+      source: "hazard-vertex-source",
+      paint: {
+        "circle-radius": 5,
+        "circle-color": "#ffffff",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#e91e63"
+      }
+    });
+  } else {
+    map.getSource("hazard-vertex-source").setData(vertexFc);
+  }
+}
+
+function updatePointName(id, newName) {
+  const point = comparePoints.find((p) => p.id === id);
+  if (point) {
+    point.name = newName;
+    updateUnifiedIsochrones(); 
+  }
+}
+
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
+
+function scoreBarHTML(label, zScore) {
+  const sig = 1 / (1 + Math.exp(-zScore));
+  const pct = Math.max(0, Math.min(100, Math.round(sig * 100)));
+  const barColour = getScoreColour(zScore);
+  return `
+    <div style="font-size:11px; margin-top:4px;">
+      <div style="display:flex; justify-content:space-between; color:#000; font-weight:600;">
+        <span>${label}</span>
+        <span>${zScore.toFixed(2)} (z)</span>
+      </div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fg" style="width:${pct}%; background:${barColour};"></div>
+      </div>
+    </div>`;
+}
+
+function distributionSparklineHTML(weights) {
+  const aPct = Math.round(weights.amenity * 100);
+  const tPct = Math.round(weights.transit * 100);
+  const gPct = Math.round(weights.green * 100);
+  return `
+    <div style="margin-top:6px;">
+      <div style="font-size:10px; font-weight:700; color:#000; margin-bottom:2px; text-transform:uppercase;">Priority Balance</div>
+      <div style="display:flex; height:6px; border:1.5px solid #000; overflow:hidden; background:#e0e0e0;">
+        <div style="width:${aPct}%; background:#ff5722;" title="Amenities: ${aPct}%"></div>
+        <div style="width:${tPct}%; background:#9c27b0;" title="Transit: ${tPct}%"></div>
+        <div style="width:${gPct}%; background:#4caf50;" title="Green Space: ${gPct}%"></div>
+      </div>
+    </div>`;
+}
+
+function renderCompareList() {
+  const activeInput = document.activeElement;
+  const activeInputId = (activeInput && activeInput.classList.contains('point-name-input')) ? Number(activeInput.dataset.id) : null;
+  const activeCursorPos = activeInput ? activeInput.selectionStart : null;
+
+  document.querySelectorAll('.point-name-input').forEach(input => {
+    const id = Number(input.dataset.id);
+    const point = comparePoints.find(p => p.id === id);
+    if (point) point.name = input.value;
+  });
+
+  const container = document.getElementById("compare-list");
+  if (comparePoints.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = comparePoints
+    .map((p) => {
+      if (!p.data) {
+        return `<div class="compare-item${p.loading ? ' loading' : ''}">
+          <header>
+            <input type="text" class="point-name-input" data-id="${p.id}" value="${esc(p.name)}" oninput="updatePointName(${p.id}, this.value)" />
+            <button onclick="removePoint(${p.id})">✕</button>
+          </header>
+          ${p.error ? `<div class="terrain-note">${esc(p.error)}</div>` : '<div style="color:#888; font-style:italic;">Calculating scores...</div>'}
+        </div>`;
+      }
+      const d = p.data;
+      const mFac = d.factors.morphology;
+      const aFac = d.factors.accessibility;
+      
+      let areaSqKm = "0.00";
+      try {
+        const areaSqM = turf.area(d.isochrone);
+        areaSqKm = (areaSqM / 1000000).toFixed(2);
+      } catch (e) {
+        console.error("Error calculating area:", e);
+      }
+
+      return `
+        <div class="compare-item${p.loading ? ' loading' : ''}">
+          <header>
+            <input type="text" class="point-name-input" data-id="${p.id}" value="${esc(p.name)}" oninput="updatePointName(${p.id}, this.value)" title="Click to rename" />
+            <button onclick="removePoint(${p.id})" title="Remove point">✕</button>
+          </header>
+          <div>
+            <span class="badge">Coverage: ${areaSqKm} km²</span>
+          </div>
+          ${scoreBarHTML("Final Walkability", d.final_score)}
+          ${scoreBarHTML("Accessibility", d.accessibility_score)}
+          ${scoreBarHTML("Street Morphology", d.morphology_score)}
+          ${distributionSparklineHTML(p.weights)}
+          <div style="margin-top: 8px; font-size: 10px; color: #000; background: #f4f4f0; border: 1.5px solid #000; padding: 6px;">
+            <strong>Breakdown Factors:</strong><br/>
+            • Amenities reachable: ${Math.round(aFac.amenity_count)}<br/>
+            • Transit score: ${aFac.transit_stop_score.toFixed(1)}<br/>
+            • Green space ratio: ${(aFac.green_space_ratio * 100).toFixed(1)}%<br/>
+            • Intersection density: ${mFac.intersection_density.toFixed(1)} /km²<br/>
+            • Network integration: ${mFac.integration.toFixed(4)}<br/>
+            • Avg block length: ${mFac.avg_block_length.toFixed(1)}m
+          </div>
+          ${terrainHTML(p)}
+        </div>`;
+    })
+    .join("");
+
+  if (activeInputId !== null) {
+    const newInput = container.querySelector(`.point-name-input[data-id="${activeInputId}"]`);
+    if (newInput) {
+      newInput.focus();
+      if (activeCursorPos !== null) {
+        newInput.setSelectionRange(activeCursorPos, activeCursorPos);
+      }
+    }
+  }
+}
+
+function setupInteractivePopups(layerName, map) {
+  const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+  map.on('mouseenter', layerName, (e) => {
+    map.getCanvas().style.cursor = 'pointer';
+    if (!e.features.length) return;
+    const feature = e.features[0];
+    const coordinates = e.lngLat;
+    let content = `<div style="font-size:11px; font-weight:800; border-bottom:1px solid #000; margin-bottom:4px;">Layer: ${layerName}</div>`;
+    for (const [key, value] of Object.entries(feature.properties)) {
+      if (value && key !== 'geometry') {
+        content += `<div style="font-size:10px; color:#000;"><strong>${key}:</strong> ${value}</div>`;
+      }
+    }
+    popup.setLngLat(coordinates).setHTML(content).addTo(map);
+  });
+  map.on('mouseleave', layerName, () => {
+    map.getCanvas().style.cursor = '';
+    popup.remove();
+  });
+}
+
+async function setupLayerToggle(checkboxId, layerName, endpoint, paintConfig, type = 'circle', dropdownId = null) {
+  const checkbox = document.getElementById(checkboxId);
+  const dropdown = dropdownId ? document.getElementById(dropdownId) : null;
+
+  checkbox.addEventListener('change', async () => {
+    if (checkbox.checked) {
+      if (dropdown) dropdown.style.display = 'block';
+      if (!map.getSource(layerName)) {
+        setStatus(`Loading ${layerName} layer...`);
+        const res = await fetch(`${API_BASE}${endpoint}`);
+        const data = await res.json();
+        
+        if (layerName === 'amenities-layer') loadedLayersCache.amenities = data;
+        if (layerName === 'greenspace-layer') loadedLayersCache.greenspace = data;
+        if (layerName === 'transit-layer') loadedLayersCache.transit = data;
+
+        map.addSource(layerName, { type: 'geojson', data: data });
+        
+        if (type === 'circle') {
+          map.addLayer({ id: layerName, type: 'circle', source: layerName, paint: paintConfig });
+        } else if (type === 'fill') {
+          map.addLayer({ id: layerName, type: 'fill', source: layerName, paint: paintConfig });
+        }
+        setupInteractivePopups(layerName, map);
+        setStatus("Layer loaded.");
+      } else {
+        map.setLayoutProperty(layerName, 'visibility', 'visible');
+      }
+    } else {
+      if (dropdown) dropdown.style.display = 'none';
+      if (map.getLayer(layerName)) {
+        map.setLayoutProperty(layerName, 'visibility', 'none');
+      }
+    }
+  });
+}
+
+function filterLayer(layerName, propertyKey, value) {
+  if (!map.getLayer(layerName)) return;
+  if (value === 'all') {
+    map.setFilter(layerName, null);
+  } else {
+    map.setFilter(layerName, ['==', ['get', propertyKey], value]);
+  }
+}
+
+function filterTransitType(value) {
+  const layerName = 'transit-layer';
+  if (!map.getLayer(layerName)) return;
+  if (value === 'all') {
+    map.setFilter(layerName, null);
+  } else if (value === 'bus_stop') {
+    map.setFilter(layerName, ['==', ['get', 'highway'], 'bus_stop']);
+  } else if (value === 'station') {
+    map.setFilter(layerName, ['==', ['get', 'railway'], 'station']);
+  } else if (value === 'platform') {
+    map.setFilter(layerName, ['==', ['get', 'public_transport'], 'platform']);
+  }
+}
+
+map.on("load", () => {
+  map.addSource('mapbox-dem', {
+    'type': 'raster-dem',
+    'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+    'tileSize': 512,
+    'maxzoom': 14
+  });
+
+  document.getElementById('layer-terrain').addEventListener('change', (e) => {
+    if (e.target.checked) {
+      map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+      map.easeTo({ pitch: 45, duration: 1000 });
+    } else {
+      map.setTerrain(null);
+      map.easeTo({ pitch: 0, duration: 1000 });
+    }
+  });
+
+  map.addSource('isochrones-source', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  });
+
+  map.addLayer({
+    id: 'isochrones-layer',
+    type: 'fill',
+    source: 'isochrones-source',
+    layout: { visibility: 'visible' },
+    paint: {
+      'fill-color': '#2ecc71',
+      'fill-opacity': 0.45,
+      'fill-antialias': true
+    }
+  });
+
+  map.addLayer({
+    id: 'isochrones-outline',
+    type: 'line',
+    source: 'isochrones-source',
+    layout: { visibility: 'visible' },
+    paint: {
+      'line-color': '#000000',
+      'line-width': 2,
+      'line-opacity': 0.8
+    }
+  });
+
+  const amenitiesPaint = {
+    'circle-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 4,
+      15, 8
+    ],
+    'circle-stroke-width': 1.5,
+    'circle-stroke-color': '#000000',
+    'circle-color': [
+      'match', ['get', 'amenity'],
+      'cafe', '#ff5722',
+      'restaurant', '#e91e63',
+      'pharmacy', '#00bcd4',
+      'school', '#3f51b5',
+      'shop', '#ffeb3b',
+      '#ff9800'
+    ]
+  };
+
+  const greenSpacePaint = {
+    'fill-opacity': 0.35,
+    'fill-outline-color': '#000000',
+    'fill-color': [
+      'match', ['get', 'leisure'],
+      'park', '#4caf50',
+      'garden', '#8bc34a',
+      'forest', '#1b5e20',
+      'grass', '#cddc39',
+      '#66bb6a'
+    ]
+  };
+
+  const transitPaint = {
+    'circle-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 4,
+      15, 9
+    ],
+    'circle-stroke-width': 1.5,
+    'circle-stroke-color': '#000000',
+    'circle-color': [
+      'match', ['get', 'highway'],
+      'bus_stop', '#9c27b0',
+      'station', '#673ab7',
+      'platform', '#3f51b5',
+      '#ab47bc'
+    ]
+  };
+
+  const referencePaint = {
+    'circle-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 3,
+      15, 7
+    ],
+    'circle-color': '#00bcd4',
+    'circle-stroke-width': 1.5,
+    'circle-stroke-color': '#000000'
+  };
+
+  loadStudyArea();
+  setupLayerToggle('layer-amenities', 'amenities-layer', '/layers/amenities', amenitiesPaint, 'circle', 'filter-amenities');
+  setupLayerToggle('layer-greenspace', 'greenspace-layer', '/layers/greenspace', greenSpacePaint, 'fill', 'filter-greenspace');
+  setupLayerToggle('layer-transit', 'transit-layer', '/layers/transit', transitPaint, 'circle', 'filter-transit');
+  setupLayerToggle('layer-reference', 'reference-layer', '/layers/reference-points', referencePaint, 'circle');
+});
+
+let studyArea = null;
+let studyBbox = null;
+
+function isInsideStudyArea(lng, lat) {
+  if (!studyArea) return true;
+  if (lng < studyBbox[0] || lng > studyBbox[2] || lat < studyBbox[1] || lat > studyBbox[3]) return false;
+  return turf.booleanPointInPolygon([lng, lat], studyArea);
+}
+
+function warnOutside() {
+  setStatus("Outside the study area (greyed out). Click inside Stockholm Municipality.");
+  const el = document.getElementById("status");
+  el.classList.add("status-warn");
+  setTimeout(() => el.classList.remove("status-warn"), 1600);
+}
+
+map.on("mousemove", (e) => {
+  const lng = e.lngLat.lng;
+  const lat = e.lngLat.lat;
+  document.getElementById("cursor-coords").textContent = `Lat: ${lat.toFixed(4)} Lon: ${lng.toFixed(4)}`;
+
+  if (!studyArea) return;
+  const canvas = map.getCanvas();
+  if (!isInsideStudyArea(lng, lat)) canvas.style.cursor = "not-allowed";
+  else if (canvas.style.cursor === "not-allowed") canvas.style.cursor = "";
+});
+
+async function loadStudyArea() {
+  try {
+    const res = await fetch(`${API_BASE}/layers/boundary`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const fc = await res.json();
+
+    const polys = [];
+    for (const f of fc.features || []) {
+      const g = f.geometry;
+      if (!g) continue;
+      if (g.type === "Polygon") polys.push(g.coordinates);
+      else if (g.type === "MultiPolygon") polys.push(...g.coordinates);
+    }
+    if (!polys.length) throw new Error("no polygon geometry");
+
+    studyArea = { type: "Feature", properties: {}, geometry: { type: "MultiPolygon", coordinates: polys } };
+    studyBbox = turf.bbox(studyArea);
+
+    const world = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+    const mask = {
+      type: "Feature", properties: {},
+      geometry: { type: "MultiPolygon", coordinates: [
+        [world, ...polys.map((p) => p[0])],
+        ...polys.flatMap((p) => p.slice(1).map((hole) => [hole])),
+      ] },
+    };
+
+    map.addSource("study-mask", { type: "geojson", data: mask });
+    map.addSource("study-edge", { type: "geojson", data: studyArea });
+
+    const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+    map.addLayer({
+      id: "study-mask-fill", type: "fill", source: "study-mask",
+      paint: { "fill-color": "#3d3d3d", "fill-opacity": 0.55 },
+    }, firstSymbol);
+    map.addLayer({
+      id: "study-edge-line", type: "line", source: "study-edge",
+      paint: { "line-color": "#000000", "line-width": 2.5, "line-dasharray": [3, 2] },
+    }, firstSymbol);
+  } catch (err) {
+    console.warn("Study area boundary unavailable:", err);
+    setStatus("Study area boundary not loaded; the API will still reject outside clicks.");
+  }
+}
+
+function updateUnifiedIsochrones() {
+  const validPoints = comparePoints.filter(p => p.data && p.data.isochrone);
+  const features = validPoints.map(p => ({
+    ...p.data.isochrone,
+    properties: {
+      ...p.data.isochrone.properties,
+      name: p.name 
+    }
+  }));
+  
+  if (map.getSource('isochrones-source')) {
+    map.getSource('isochrones-source').setData({
+      type: 'FeatureCollection',
+      features: features
+    });
+  }
+
+  if (features.length === 0) return;
+
+  const scores = features
+    .map(f => f.properties.final_score)
+    .sort((a, b) => a - b);
+
+  if (scores.length === 1) {
+    map.setPaintProperty('isochrones-layer', 'fill-color', getScoreColour(scores[0]));
+    return;
+  }
+
+  const p20 = scores[Math.floor(scores.length * 0.20)];
+  const p40 = scores[Math.floor(scores.length * 0.40)];
+  const p60 = scores[Math.floor(scores.length * 0.60)];
+  const p80 = scores[Math.floor(scores.length * 0.80)];
+
+  map.setPaintProperty('isochrones-layer', 'fill-color', [
+    'step',
+    ['get', 'final_score'],
+    '#d73027', 
+    p20, '#fc8d59', 
+    p40, '#fee08b', 
+    p60, '#d9ef8b', 
+    p80, '#1a9850'  
+  ]);
+}
+</script>
+</body>
+</html>
